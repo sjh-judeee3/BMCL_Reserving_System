@@ -216,7 +216,7 @@ function WeekView({ date, reservations, onCreate, onEdit, onUpdate, me, now, can
                           });
                         }}
                         onClick={(e) => { e.stopPropagation(); if (!moveResv) onEdit(r); }}
-                        title={`${r.name}: ${GpuUtils.fmtTime(startDate)} – ${GpuUtils.fmtTime(endDate)} · GPU ${r.gpus.join(',')}${mine ? '' : ' (read-only)'}`}
+                        title={`${r.name}: ${GpuUtils.fmtTime(startDate)} – ${GpuUtils.fmtTime(endDate)} ${r.gpus.length ? ' · GPU ' + r.gpus.join(',') : ''}${mine ? '' : ' (read-only)'}`}
                       >
                         {mine && <div
                           className="resv-resize top"
@@ -229,11 +229,11 @@ function WeekView({ date, reservations, onCreate, onEdit, onUpdate, me, now, can
                             });
                           }}
                         />}
-                        <div className="resv-name" style={{fontSize: 10}}>{r.name}</div>
+                        <div className="resv-name" style={{fontSize: 10}}>{r.recurring ? '↻ ' : ''}{r.name}</div>
                         <div className="resv-time" style={{fontSize: 9, ...(isActive ? { color: color.solid, fontWeight: 600 } : {})}}>
                           {isActive
                             ? <span>{GpuUtils.fmtTimeShort(startDate)}–{GpuUtils.fmtTimeShort(endDate)}</span>
-                            : <span>GPU {r.gpus.join(',')} · {GpuUtils.fmtTimeShort(startDate)}–{GpuUtils.fmtTimeShort(endDate)}</span>}
+                            : <span>{r.gpus.length ? `GPU ${r.gpus.join(',')} · ` : ''}{GpuUtils.fmtTimeShort(startDate)}–{GpuUtils.fmtTimeShort(endDate)}</span>}
                         </div>
                         {isActive && (
                           <div className="resv-duration-badge">{GpuUtils.humanDuration(durationMin)}</div>

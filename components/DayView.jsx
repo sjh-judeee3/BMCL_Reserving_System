@@ -1,9 +1,12 @@
 /* Day view — 48 half-hour bins × 4 GPU columns */
 const SLOT_HEIGHT = 22; // px per 30-min slot
 
-function DayView({ date, reservations, onCreate, onEdit, onUpdate, me, now, canEdit }) {
+function DayView({ date, reservations, onCreate, onEdit, onUpdate, me, now, canEdit, columns, inCol, colHint }) {
   const _canEdit = typeof canEdit === 'function' ? canEdit : () => true;
-  const { SLOTS_PER_DAY, GPU_COUNT } = GpuUtils;
+  const { SLOTS_PER_DAY } = GpuUtils;
+  const colLabels = columns || Array.from({length: GpuUtils.GPU_COUNT}).map((_, g) => `GPU ${g}`);
+  const GPU_COUNT = colLabels.length;
+  const _inCol = inCol || ((r, g) => r.gpus.includes(g));
   const scrollRef = useRef(null);
   const gridRef = useRef(null);
   const [drag, setDrag] = useState(null); // {startSlot, endSlot, startGpu, endGpu}
@@ -117,12 +120,12 @@ function DayView({ date, reservations, onCreate, onEdit, onUpdate, me, now, canE
 
   return (
     <div className="day-view">
-      <div className="day-view-header">
+      <div className="day-view-header" style={{ gridTemplateColumns: `60px repeat(${GPU_COUNT}, minmax(0,1fr))` }}>
         <div className="corner" />
-        {Array.from({length: GPU_COUNT}).map((_, g) => (
+        {colLabels.map((label, g) => (
           <div key={g} className="gpu-col-header">
-            <div className="gpu-name">GPU {g}</div>
-            <div className="gpu-hint">drag to select</div>
+            <div className="gpu-name">{label}</div>
+            <div className="gpu-hint">{colHint || 'drag to select'}</div>
           </div>
         ))}
       </div>
@@ -131,7 +134,7 @@ function DayView({ date, reservations, onCreate, onEdit, onUpdate, me, now, canE
         <div
           className="day-grid"
           ref={gridRef}
-          style={{ height: SLOT_HEIGHT * SLOTS_PER_DAY + 'px' }}
+          style={{ height: SLOT_HEIGHT * SLOTS_PER_DAY + 'px', gridTemplateColumns: `60px repeat(${GPU_COUNT}, minmax(0,1fr))` }}
           onMouseDown={onGridMouseDown}
         >
           {/* Hour labels column */}
@@ -160,7 +163,7 @@ function DayView({ date, reservations, onCreate, onEdit, onUpdate, me, now, canE
               ))}
 
               {/* Reservations on this GPU */}
-              {dayResvs.filter(r => r.gpus.includes(g)).map(r => {
+              {dayResvs.filter(r => _inCol(r, g)).map(r => {
                 const mine = _canEdit(r);
                 const clamped = GpuUtils.clampToDay(r, date);
                 let top = clamped.startOffset * SLOT_HEIGHT;
@@ -238,7 +241,7 @@ function DayView({ date, reservations, onCreate, onEdit, onUpdate, me, now, canE
                         });
                       }}
                     />}
-                    <div className="resv-name">{r.name}</div>
+                    <div className="resv-name">{r.recurring ? '↻ ' : ''}{r.name}</div>
                     <div className="resv-time" style={isActive ? { color: color.solid, fontWeight: 600 } : null}>
                       {GpuUtils.fmtTimeShort(startDate)} – {GpuUtils.fmtTimeShort(endDate)}
                       {isActive && <span style={{marginLeft: 4, opacity: 0.75}}>· {GpuUtils.humanDuration(durationMin)}</span>}

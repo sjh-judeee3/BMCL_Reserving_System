@@ -160,7 +160,7 @@ function MonthView({ date, reservations, onCreate, onEdit, now, canEdit }) {
                         '--resv-bg': color.tint,
                       }}
                       onClick={(e) => { e.stopPropagation(); onEdit(r); }}
-                      title={`${r.name} · GPU ${r.gpus.join(',')} · ${GpuUtils.fmtMonthDay(rStart)} ${GpuUtils.fmtTimeShort(rStart)} – ${GpuUtils.fmtMonthDay(rEnd)} ${GpuUtils.fmtTimeShort(rEnd)}${mine ? '' : ' (read-only)'}`}
+                      title={`${r.name}${r.gpus.length ? ' · GPU ' + r.gpus.join(',') : ''} · ${GpuUtils.fmtMonthDay(rStart)} ${GpuUtils.fmtTimeShort(rStart)} – ${GpuUtils.fmtMonthDay(rEnd)} ${GpuUtils.fmtTimeShort(rEnd)}${mine ? '' : ' (read-only)'}`}
                     >
                       {seg.isStart && (
                         <>
@@ -200,7 +200,7 @@ function MonthView({ date, reservations, onCreate, onEdit, now, canEdit }) {
                         const mine = _canEdit(r);
                         const rStart = GpuUtils.slotIndexToDate(r.startSlot);
                         const rEnd = GpuUtils.slotIndexToDate(r.endSlot);
-                        const gpuLabel = r.gpus.length === 1 ? `G${r.gpus[0]}` : `G${r.gpus.join('/')}`;
+                        const gpuLabel = r.gpus.length === 0 ? '' : r.gpus.length === 1 ? `G${r.gpus[0]}` : `G${r.gpus.join('/')}`;
                         return (
                           <div
                             key={r.id + '-' + colIdx}
@@ -213,12 +213,12 @@ function MonthView({ date, reservations, onCreate, onEdit, now, canEdit }) {
                               '--resv-bg': color.tint,
                             }}
                             onClick={(e) => { e.stopPropagation(); onEdit(r); }}
-                            title={`${r.name} · GPU ${r.gpus.join(',')} · ${GpuUtils.fmtTimeShort(rStart)}–${GpuUtils.fmtTimeShort(rEnd)}${mine ? '' : ' (read-only)'}`}
+                            title={`${r.name}${r.gpus.length ? ' · GPU ' + r.gpus.join(',') : ''} · ${GpuUtils.fmtTimeShort(rStart)}–${GpuUtils.fmtTimeShort(rEnd)}${mine ? '' : ' (read-only)'}`}
                           >
                             <span className="dot" />
                             <span className="bar-label">
                               <strong>{GpuUtils.fmtTimeShort(rStart)}–{GpuUtils.fmtTimeShort(rEnd)}</strong>
-                              {' '}{r.name} · {gpuLabel}
+                              {' '}{r.recurring ? '↻ ' : ''}{r.name}{gpuLabel ? ` · ${gpuLabel}` : ''}
                             </span>
                           </div>
                         );

@@ -1,7 +1,7 @@
 /* Topbar — brand, view switch, nav, today, current user / sign in */
 const { useState, useEffect, useRef, useMemo } = React;
 
-function Topbar({ currentDate, view, onView, onNav, onToday, title, members, me, isGuest, onLogOut, onSignIn, onAdminReset }) {
+function Topbar({ currentDate, view, onView, onNav, onToday, title, members, me, isGuest, onLogOut, onSignIn, onAdminReset, tab, onTab }) {
   const myColor = me ? MEMBER_COLORS[me.colorIdx % MEMBER_COLORS.length].solid : '#8e8e93';
   const [openMenu, setOpenMenu] = useState(false);
   const menuRef = useRef(null);
@@ -18,7 +18,12 @@ function Topbar({ currentDate, view, onView, onNav, onToday, title, members, me,
     <div className="topbar">
       <div className="brand" onClick={() => onView('month')} style={{ cursor: 'pointer' }}>
         <img src="logo.png" className="brand-logo" alt="BMCL" onError={e => { e.target.style.display='none'; }} />
-        <span>BMCL GPU Calendar</span>
+        <span>BMCL</span>
+      </div>
+
+      <div className="tab-switch" role="tablist">
+        <button role="tab" className={tab === 'gpu' ? 'active' : ''} onClick={() => onTab('gpu')}>GPU</button>
+        <button role="tab" className={tab === 'interns' ? 'active' : ''} onClick={() => onTab('interns')}>Interns</button>
       </div>
 
       <div className="view-switch">
