@@ -82,7 +82,7 @@ function ReservationPopover({ draft, editing, readOnly, reservations, members, m
         )}
 
         <div className="field">
-          <label>GPUs</label>
+          <label>GPUs{!readOnly && gpus.length === 0 && <span style={{ color: '#d70015', fontWeight: 500, marginLeft: 6 }}>· GPU를 1개 이상 선택하세요</span>}</label>
           <div className="gpu-chips">
             {Array.from({length: GpuUtils.GPU_COUNT}).map((_, g) => (
               <button

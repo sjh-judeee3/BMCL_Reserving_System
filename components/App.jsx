@@ -4,7 +4,7 @@ const { useState, useEffect, useMemo, useRef } = React;
 // ★★★ Apps Script 배포 후 여기에 URL 붙여넣기 ★★★
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxetGI0yQ-71l0z2kikKHmmW86raFQGy1OULomikn_N4VxCUsPELdPlRypWAcxZgE9oSA/exec';
 
-const MEMBERS_VERSION = 3;
+const MEMBERS_VERSION = 4;
 
 const DEFAULT_MEMBERS = [
   { id: 'm_juhee',  name: 'juhee',  colorIdx: 0 },
@@ -12,6 +12,7 @@ const DEFAULT_MEMBERS = [
   { id: 'm_jiwon',  name: 'jiwon',  colorIdx: 2 },
   { id: 'm_yunji',  name: 'yunji',  colorIdx: 3 },
   { id: 'm_suheon', name: 'suheon', colorIdx: 4 },
+  { id: 'm_yangyang', name: 'yangyang', colorIdx: 5 },
 ];
 
 // ---- Session (창 닫으면 풀림) ----
@@ -59,7 +60,9 @@ async function apiGet(params) {
   try { return await res.json(); } catch(e) { return { ok: false }; }
 }
 
+const cleanGpuList = (g) => (g || []).map(Number).filter(x => Number.isInteger(x) && x >= 0 && x < GpuUtils.GPU_COUNT);
 async function apiCreate(reservation) {
+  if (cleanGpuList(reservation.gpus).length === 0) return { ok: false, error: 'no gpus' };
   return apiGet({
     action: 'create',
     id: reservation.id,
@@ -73,6 +76,7 @@ async function apiCreate(reservation) {
   });
 }
 async function apiUpdate(reservation) {
+  if (cleanGpuList(reservation.gpus).length === 0) return { ok: false, error: 'no gpus' };
   return apiGet({
     action: 'update',
     id: reservation.id,
@@ -87,6 +91,29 @@ async function apiUpdate(reservation) {
 }
 async function apiDelete(id) {
   return apiGet({ action: 'delete', id: String(id) });
+}
+
+// ---- Intern schedule API ----
+async function fetchInternSeries() {
+  const res = await apiGet({ action: 'internList' });
+  return (res && Array.isArray(res.events)) ? res.events : [];
+}
+function internParams(action, s) {
+  return {
+    action, id: s.id, memberId: s.memberId, creator: s.creator || '',
+    startSlot: String(s.startSlot), endSlot: String(s.endSlot),
+    intern: s.intern, note: s.note || '',
+    recur: JSON.stringify(s.recur || {}), exdates: (s.exdates || []).join(','),
+  };
+}
+const apiInternCreate = (s) => apiGet(internParams('internCreate', s));
+const apiInternUpdate = (s) => apiGet(internParams('internUpdate', s));
+const apiInternDelete = (id) => apiGet({ action: 'internDelete', id: String(id) });
+
+function loadTab() {
+  if (location.hash === '#interns') return 'interns';
+  if (location.hash === '#gpu') return 'gpu';
+  try { return localStorage.getItem('bmcl_tab') === 'interns' ? 'interns' : 'gpu'; } catch(e) { return 'gpu'; }
 }
 
 async function apiAdminReset(adminPassword, targetMemberId) {
@@ -112,6 +139,16 @@ function App() {
   const [adminDialog, setAdminDialog] = useState(false);
   const [guestToast, setGuestToast] = useState(null); // message shown when guest tries to edit
   const [showWelcome, setShowWelcome] = useState(() => !loadSessionMeId() && !loadGuestFlag());
+  const [tab, setTab] = useState(loadTab);
+  const [internSeries, setInternSeries] = useState([]);
+  const [internPopover, setInternPopover] = useState(null);
+  const [hiddenInterns, setHiddenInterns] = useState([]);
+
+  useEffect(() => {
+    try { localStorage.setItem('bmcl_tab', tab); } catch(e) {}
+    if (location.hash !== '#' + tab) history.replaceState(null, '', '#' + tab);
+    setPopover(null); setInternPopover(null);
+  }, [tab]);
 
   const me = members.find(m => m.id === meId) || null;
 
@@ -136,11 +173,36 @@ function App() {
     }
   };
 
+  const loadInterns = async () => {
+    try {
+      const list = await fetchInternSeries();
+      setInternSeries(list.map(s => ({
+        ...s,
+        startSlot: Number(s.startSlot), endSlot: Number(s.endSlot),
+        recur: InternUtils.normRecur(s.recur),
+        exdates: Array.isArray(s.exdates) ? s.exdates : String(s.exdates || '').split(',').filter(Boolean),
+      })));
+    } catch(e) { console.error('Failed to load intern schedule:', e); }
+  };
+
   useEffect(() => {
     loadReservations();
-    const t = setInterval(loadReservations, 30000);
+    loadInterns();
+    const t = setInterval(() => { loadReservations(); loadInterns(); }, 30000);
     return () => clearInterval(t);
   }, []);
+
+  // ---- Intern occurrences (expanded around current date) ----
+  const occurrences = useMemo(() => {
+    const rs = GpuUtils.addDays(currentDate, -45), re = GpuUtils.addDays(currentDate, 45);
+    return InternUtils.expandAll(internSeries, rs, re);
+  }, [internSeries, currentDate.toDateString()]);
+  const knownInterns = useMemo(() => {
+    const set = new Set(internSeries.map(s => s.intern).filter(Boolean));
+    return [...set].sort((x, y) => x.localeCompare(y));
+  }, [internSeries]);
+  const visibleOccurrences = useMemo(() => occurrences.filter(o => !hiddenInterns.includes(o.name)), [occurrences, hiddenInterns]);
+  const internCols = knownInterns.filter(n => !hiddenInterns.includes(n));
 
   // meId 저장 (세션)
   useEffect(() => { saveSessionMeId(meId); }, [meId]);
@@ -258,7 +320,8 @@ function App() {
 
   const handleSaveNew = async ({ startSlot, endSlot, gpus, note, memberId }) => {
     const mem = me; // always save as current user (ignore memberId override for safety)
-    const cleanGpus = (gpus || []).filter(g => typeof g === 'number' && !isNaN(g));
+    if (!mem) return;
+    const cleanGpus = cleanGpuList(gpus);
     if (cleanGpus.length === 0) return; // no valid GPUs, refuse
     const newResv = {
       id: GpuUtils.uid(), memberId: mem.id, name: mem.name, colorIdx: mem.colorIdx,
@@ -271,9 +334,11 @@ function App() {
 
   const handleSaveEdit = async ({ startSlot, endSlot, gpus, note }) => {
     if (!canEdit(popover.editing)) return;
+    const cleanGpus = cleanGpuList(gpus);
+    if (cleanGpus.length === 0) return;
     const updated = {
       ...popover.editing,
-      startSlot, endSlot, gpus, note,
+      startSlot, endSlot, gpus: cleanGpus, note,
     };
     setReservations(prev => prev.map(r => r.id === updated.id ? updated : r));
     setPopover(null);
@@ -292,11 +357,78 @@ function App() {
     if (blockGuest('예약을 수정하려면 로그인이 필요해요.')) return;
     const resv = reservations.find(r => r.id === id);
     if (!resv || !canEdit(resv)) return;
+    if (patch.gpus && cleanGpuList(patch.gpus).length === 0) return;
     const updated = reservations.map(r => r.id === id ? { ...r, ...patch } : r);
     setReservations(updated);
     const rr = updated.find(r => r.id === id);
     if (rr) await apiUpdate(rr);
   };
+
+  // ------- Intern handlers -------
+  const findSeries = (occ) => internSeries.find(s => s.id === occ.seriesId);
+  const putSeries = async (s, isNew) => {
+    setInternSeries(prev => isNew ? [...prev, s] : prev.map(x => x.id === s.id ? s : x));
+    await (isNew ? apiInternCreate(s) : apiInternUpdate(s));
+  };
+
+  const internCreate = (payload) => {
+    if (blockGuest('일정을 만들려면 로그인이 필요해요.')) return;
+    const col = payload.gpus && payload.gpus.length ? internCols[payload.gpus[0]] : '';
+    setInternPopover({ mode: 'create', draft: { startSlot: payload.startSlot, endSlot: payload.endSlot, intern: col || '' } });
+  };
+  const internEdit = (occ) => {
+    const series = findSeries(occ);
+    if (!series) return;
+    setInternPopover({ mode: 'edit', editing: occ, series, readOnly: !canEdit(occ) });
+  };
+  const internSaveNew = async ({ startSlot, endSlot, intern, note, recur }) => {
+    if (!me) return;
+    const s = { id: GpuUtils.uid(), memberId: me.id, creator: me.name, startSlot, endSlot, intern, note, recur, exdates: [] };
+    setInternPopover(null);
+    await putSeries(s, true);
+  };
+  const internSaveEdit = async ({ startSlot, endSlot, intern, note, recur }) => {
+    const occ = internPopover.editing;
+    const s = findSeries(occ);
+    if (!s || !canEdit(occ)) return;
+    const dur = endSlot - startSlot;
+    const newStart = recur.freq === 'none' ? startSlot : s.startSlot + (startSlot - occ.startSlot);
+    setInternPopover(null);
+    await putSeries({ ...s, startSlot: newStart, endSlot: newStart + dur, intern, note, recur }, false);
+  };
+  const internDelete = async (scope) => {
+    const occ = internPopover.editing;
+    const s = findSeries(occ);
+    if (!s || !canEdit(occ)) return;
+    setInternPopover(null);
+    if (scope === 'one' && occ.recurring) {
+      await putSeries({ ...s, exdates: [...(s.exdates || []), occ.occDate] }, false);
+    } else {
+      setInternSeries(prev => prev.filter(x => x.id !== s.id));
+      await apiInternDelete(s.id);
+    }
+  };
+  const internUpdate = async (id, patch) => {
+    if (blockGuest('일정을 수정하려면 로그인이 필요해요.')) return;
+    const occ = occurrences.find(o => o.id === id);
+    if (!occ || !canEdit(occ)) return;
+    const s = findSeries(occ);
+    if (!s) return;
+    const dS = (patch.startSlot ?? occ.startSlot) - occ.startSlot;
+    const dE = (patch.endSlot ?? occ.endSlot) - occ.endSlot;
+    const ns = s.startSlot + dS, ne = Math.max(ns + 1, s.endSlot + dE);
+    await putSeries({ ...s, startSlot: ns, endSlot: ne }, false);
+  };
+
+  const isInterns = tab === 'interns';
+  const V = isInterns
+    ? { reservations: visibleOccurrences, onCreate: internCreate, onEdit: internEdit, onUpdate: internUpdate }
+    : { reservations, onCreate: handleCreate, onEdit: handleEdit, onUpdate: handleUpdate };
+  const dayColProps = isInterns
+    ? (internCols.length
+        ? { columns: internCols, inCol: (r, i) => r.name === internCols[i], colHint: 'drag to add' }
+        : { columns: ['Interns'], inCol: () => true, colHint: 'drag to add' })
+    : {};
 
   // ------- Keyboard shortcuts -------
   useEffect(() => {
@@ -308,7 +440,7 @@ function App() {
       else if (e.key === 't') setCurrentDate(new Date());
       else if (e.key === 'ArrowLeft') onNav(-1);
       else if (e.key === 'ArrowRight') onNav(1);
-      else if (e.key === 'Escape') { setPopover(null); setAuthDialog(null); }
+      else if (e.key === 'Escape') { setPopover(null); setInternPopover(null); setAuthDialog(null); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -337,18 +469,21 @@ function App() {
         onLogOut={logOut}
         onSignIn={() => setShowWelcome(true)}
         onAdminReset={() => setAdminDialog(true)}
+        tab={tab}
+        onTab={setTab}
       />
 
-      <AvailabilityStrip reservations={reservations} now={now} />
+      {isInterns
+        ? <InternStrip interns={knownInterns} occurrences={occurrences} hidden={hiddenInterns} setHidden={setHiddenInterns} />
+        : <AvailabilityStrip reservations={reservations} now={now} />}
 
       <div className="cal-body">
         {view === 'day' && (
           <DayView
+            key={tab}
             date={currentDate}
-            reservations={reservations}
-            onCreate={handleCreate}
-            onEdit={handleEdit}
-            onUpdate={handleUpdate}
+            {...V}
+            {...dayColProps}
             me={me}
             now={now}
             canEdit={canEdit}
@@ -356,11 +491,9 @@ function App() {
         )}
         {view === 'week' && (
           <WeekView
+            key={tab}
             date={currentDate}
-            reservations={reservations}
-            onCreate={handleCreate}
-            onEdit={handleEdit}
-            onUpdate={handleUpdate}
+            {...V}
             me={me}
             now={now}
             canEdit={canEdit}
@@ -368,10 +501,11 @@ function App() {
         )}
         {view === 'month' && (
           <MonthView
+            key={tab}
             date={currentDate}
-            reservations={reservations}
-            onCreate={handleCreate}
-            onEdit={handleEdit}
+            reservations={V.reservations}
+            onCreate={V.onCreate}
+            onEdit={V.onEdit}
             now={now}
             canEdit={canEdit}
           />
@@ -389,6 +523,22 @@ function App() {
           onSave={popover.mode === 'edit' ? handleSaveEdit : handleSaveNew}
           onDelete={handleDelete}
           onClose={() => setPopover(null)}
+        />
+      )}
+
+      {internPopover && (
+        <InternPopover
+          key={internPopover.editing ? internPopover.editing.id : 'new'}
+          draft={internPopover.draft}
+          editing={internPopover.editing}
+          series={internPopover.series}
+          readOnly={internPopover.readOnly}
+          knownInterns={knownInterns}
+          members={members}
+          me={me}
+          onSave={internPopover.mode === 'edit' ? internSaveEdit : internSaveNew}
+          onDelete={internDelete}
+          onClose={() => setInternPopover(null)}
         />
       )}
 
@@ -434,6 +584,30 @@ function App() {
   );
 }
 
+// ============== Intern legend strip ==============
+function InternStrip({ interns, occurrences, hidden, setHidden }) {
+  const counts = {};
+  occurrences.forEach(o => { counts[o.name] = (counts[o.name] || 0) + 1; });
+  return (
+    <div className="intern-strip">
+      <span className="intern-strip-label">Interns</span>
+      {interns.length === 0 && <span className="intern-strip-empty">아직 일정이 없어요. 캘린더를 드래그해서 인턴 일정을 추가하세요.</span>}
+      {interns.map(n => {
+        const c = MEMBER_COLORS[InternUtils.internColorIdx(n) % MEMBER_COLORS.length];
+        const off = hidden.includes(n);
+        return (
+          <button key={n} className={`intern-chip ${off ? 'off' : ''}`} title={off ? 'Show' : 'Hide'}
+            onClick={() => setHidden(h => off ? h.filter(x => x !== n) : [...h, n])}>
+            <span className="swatch" style={{ background: c.solid }}></span>
+            <span>{n}</span>
+          </button>
+        );
+      })}
+      {hidden.length > 0 && <button className="intern-strip-reset" onClick={() => setHidden([])}>Show all</button>}
+    </div>
+  );
+}
+
 // ============== Welcome screen ==============
 function WelcomeScreen({ members, onPick, onClose, onGuest }) {
   return (
@@ -442,7 +616,7 @@ function WelcomeScreen({ members, onPick, onClose, onGuest }) {
         {onClose && (
           <button className="welcome-close" onClick={onClose} aria-label="Close">×</button>
         )}
-        <h2>Welcome to BMCL GPU Calendar</h2>
+        <h2>Welcome to BMCL Calendar</h2>
         <p>Pick your name to sign in. Your session ends when you close this tab.</p>
         <div className="avatars">
           {members.map(m => {
