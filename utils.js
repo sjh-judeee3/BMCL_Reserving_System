@@ -12,7 +12,7 @@ const MEMBER_COLORS = [
   { name: 'lilac',    solid: '#c595db', tint: 'rgba(197,149,219,0.30)' },   // jiwon
   { name: 'babypink', solid: '#ffb8dc', tint: 'rgba(255,184,220,0.36)' },   // yunji
   { name: 'darkblue', solid: '#4370c4', tint: 'rgba(67,112,196,0.24)' },    // suheon
-  { name: 'peach',    solid: '#ffc48a', tint: 'rgba(255,196,138,0.30)' },
+  { name: 'rose',     solid: '#F4B8B1', tint: 'rgba(244,184,177,0.36)' },   // yangyang
   { name: 'butter',   solid: '#ead27a', tint: 'rgba(234,210,122,0.32)' },
   { name: 'sage',     solid: '#7fb8a4', tint: 'rgba(127,184,164,0.28)' },
   { name: 'dusk',     solid: '#a6a6d4', tint: 'rgba(166,166,212,0.28)' },
