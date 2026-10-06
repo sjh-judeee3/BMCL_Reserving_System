@@ -21,6 +21,7 @@ Shared lab calendar for the Brain and Machine Lab, Korea University.
 1. 사이트에 접속해 본인 이름을 선택합니다.
 2. 처음 로그인할 때 비밀번호를 설정합니다.
 3. 상단 탭에서 **GPU** 또는 **Interns**를 고른 뒤, 캘린더를 클릭하거나 드래그해 일정을 추가합니다.
+4. 랩내 멤버가 아니라면, guest 신분으로 view만 가능합니다.
 
 ## Tech Stack
 - Frontend: React (GitHub Pages)
